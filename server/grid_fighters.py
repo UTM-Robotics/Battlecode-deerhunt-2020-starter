@@ -11,9 +11,6 @@ class GridFighters():
 
     def __init__(self, player_one_connection, player_two_connection, map_file):
         self.next_id = 0
-        self.currently_duplicating = {}
-        self.currently_mining = {}
-        self.currently_stunned = {}
         self.all_units = {}
 
         self.p1_conn = player_one_connection
@@ -24,6 +21,20 @@ class GridFighters():
         self.resources = {
             self.p1_conn.name: 0,
             self.p2_conn.name: 0
+        }
+
+        self.currently_duplicating = {
+            self.p1_conn.name: {},
+            self.p2_conn.name: {}
+
+        }
+        self.currently_mining = {
+            self.p1_conn.name: {},
+            self.p2_conn.name: {}
+        }
+        self.currently_stunned = {
+            self.p1_conn.name: {}, # stores units p1 stunned
+            self.p2_conn.name: {}  # stores units p2 stunned
         }
 
         #Creates 2 copies of the map, one reversed of the other
@@ -153,21 +164,21 @@ class GridFighters():
 
             self.del_unit(x+rx, y+ry)
         elif isinstance(v, StasisMove):
-            self.currently_duplicating[k] = (
+            self.currently_duplicating[player_name][k] = (
                 player_state, player_state[k].start_duplication(v.direction, v.unit_type))
             if v.unit_type == MELEE_UNIT:
                 self.resources[player_name] -= player_state[k].melee_cost
             else:
                 self.resources[player_name] -= player_state[k].worker_cost
         elif isinstance(v, MineMove):
-            self.currently_mining[k] = (
+            self.currently_mining[player_name][k] = (
                 player_name, player_state[k].start_mining())
         elif isinstance(v, StunMove):
             x, y = player_state[k].pos_tuple()
             rx, ry = v.get_relative_moves()
             uid = str(self.get_unit(x+rx, y+ry).id)
             try:
-                self.currently_stunned[k] = (player_name, opponent_state[uid].stun())
+                self.currently_stunned[player_name][k] = (player_name, opponent_state[uid].stun())
                 self.resources[player_name] -= player_state[k].stun_cost
             except:
                 pass
@@ -222,26 +233,26 @@ class GridFighters():
 
     #tick is run each turn and updates the game state
     def tick(self, turns):
-        #Checks if any units are duplicating, if they are increment the status and create a new unit if they are complete
-        for k, (player, unit) in list(self.currently_duplicating.items()):
+        #Checks if any p2 units are duplicating, if they are increment the status and create a new unit if they are complete
+        for k, (player, unit) in list(self.currently_duplicating[self.p2_conn.name].items()):
             unit.duplication_status -= 1
             if unit.duplication_status == 0:
-                del self.currently_duplicating[k]
+                del self.currently_duplicating[self.p2_conn.name][k]
                 if self.can_duplicate_to(unit):
                     self.add_unit(player, self.create_duplicate(unit))
 
-        #Checks if any units are mining, if they are increment the status and add resources if they complete
-        for k, (p_name, unit) in list(self.currently_mining.items()):
+        #Checks if any p2 units are mining, if they are increment the status and add resources if they complete
+        for k, (p_name, unit) in list(self.currently_mining[self.p2_conn.name].items()):
             unit.mining_status -= 1
             if unit.mining_status == 0:
-                del self.currently_mining[k]
+                del self.currently_mining[self.p2_conn.name][k]
                 self.resources[p_name] += 75
 
-        #Checks if any units are stunned, if they are increment the status
-        for k, (player, unit) in list(self.currently_stunned.items()):
+        #Checks if any p2 units are stunned, if they are increment the status
+        for k, (player, unit) in list(self.currently_stunned[self.p1_conn.name].items()):
             unit.stun_status -= 1
             if unit.stun_status == 0:
-                del self.currently_stunned[k]
+                del self.currently_stunned[self.p1_conn.name][k]
 
         #Gets the moves from each player and executes.
         self.tick_player(self.p1_conn, self.p1_units,
@@ -250,6 +261,27 @@ class GridFighters():
 
         if len(self.p2_units) == 0:
             return self.p1_conn.name
+
+        #Checks if any p1 units are duplicating, if they are increment the status and create a new unit if they are complete
+        for k, (player, unit) in list(self.currently_duplicating[self.p1_conn.name].items()):
+            unit.duplication_status -= 1
+            if unit.duplication_status == 0:
+                del self.currently_duplicating[self.p1_conn.name][k]
+                if self.can_duplicate_to(unit):
+                    self.add_unit(player, self.create_duplicate(unit))
+
+        #Checks if any p1 units are mining, if they are increment the status and add resources if they complete
+        for k, (p_name, unit) in list(self.currently_mining[self.p1_conn.name].items()):
+            unit.mining_status -= 1
+            if unit.mining_status == 0:
+                del self.currently_mining[self.p1_conn.name][k]
+                self.resources[p_name] += 75
+
+        #Checks if any p1 units are stunned, if they are increment the status
+        for k, (player, unit) in list(self.currently_stunned[self.p2_conn.name].items()):
+            unit.stun_status -= 1
+            if unit.stun_status == 0:
+                del self.currently_stunned[self.p2_conn.name][k]
 
         self.tick_player(self.p2_conn, self.p2_units,
                          self.p1_units, self.p2_conn.name, turns)
